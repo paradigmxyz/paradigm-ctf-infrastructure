@@ -24,7 +24,7 @@ from eth_sandbox import *
 app = Flask(__name__)
 CORS(app)
 
-RPC_URL = os.getenv("RPC_URL")
+ETH_RPC_URL = os.getenv("ETH_RPC_URL")
 
 @dataclass
 class NodeInfo:
@@ -56,7 +56,7 @@ def launch_anvil() -> NodeInfo:
             "--balance", "5000",
             "--mnemonic", mnemonic,
             "--port", str(port),
-            "--fork-url", RPC_URL,
+            "--fork-url", ETH_RPC_URL,
             "--block-base-fee-per-gas", "0",
         ],
         stdout=sys.stdout,
