@@ -2,7 +2,9 @@ import os
 import random
 import socket
 import subprocess
+import signal
 import sys
+import json
 import time
 from dataclasses import dataclass
 from threading import Lock, Thread
@@ -23,39 +25,61 @@ CORS(app)
 HTTP_PORT = os.getenv("HTTP_PORT", "8545")
 ETH_RPC_URL = os.getenv("ETH_RPC_URL")
 
+try:
+    os.mkdir("/tmp/instances-by-team")
+    os.mkdir("/tmp/instances-by-uuid")
+except:
+    pass
 
-@dataclass
-class NodeInfo:
-    port: str
-    mnemonic: str
-    proc: subprocess.Popen
-    uuid: str
-    team: str
-
-
-instances_by_uuid: Dict[str, NodeInfo] = {}
-instances_by_team: Dict[str, NodeInfo] = {}
+def has_instance_by_uuid(uuid: str) -> bool:
+    return os.path.exists(f"/tmp/instances-by-uuid/{uuid}")
 
 
-def really_kill_node(node_info: NodeInfo):
-    print(f"killing node {node_info.team} {node_info.uuid}")
-
-    del instances_by_uuid[node_info.uuid]
-    del instances_by_team[node_info.team]
-
-    node_info.proc.kill()
+def has_instance_by_team(team: str) -> bool:
+    return os.path.exists(f"/tmp/instances-by-team/{team}")
 
 
-def kill_node(node_info: NodeInfo):
+def get_instance_by_uuid(uuid: str) -> Dict:
+    with open(f"/tmp/instances-by-uuid/{uuid}", 'r') as f:
+        return json.loads(f.read())
+
+
+def get_instance_by_team(team: str) -> Dict:
+    with open(f"/tmp/instances-by-team/{team}", 'r') as f:
+        return json.loads(f.read())
+
+
+def delete_instance_info(node_info: Dict):
+    os.remove(f'/tmp/instances-by-uuid/{node_info["uuid"]}')
+    os.remove(f'/tmp/instances-by-team/{node_info["team"]}')
+
+
+def create_instance_info(node_info: Dict):
+    with open(f'/tmp/instances-by-uuid/{node_info["uuid"]}', "w+") as f:
+        f.write(json.dumps(node_info))
+
+    with open(f'/tmp/instances-by-team/{node_info["team"]}', "w+") as f:
+        f.write(json.dumps(node_info))
+
+
+def really_kill_node(node_info: Dict):
+    print(f"killing node {node_info['team']} {node_info['uuid']}")
+
+    delete_instance_info(node_info)
+
+    os.kill(node_info["pid"], signal.SIGTERM)
+
+
+def kill_node(node_info: Dict):
     time.sleep(60 * 30)
 
-    if node_info.uuid not in instances_by_uuid:
+    if not has_instance_by_uuid(node_info["uuid"]):
         return
 
     really_kill_node(node_info)
 
 
-def launch_node(team_id: str) -> NodeInfo:
+def launch_node(team_id: str) -> Dict:
     port = random.randrange(30000, 60000)
     mnemonic = generate_mnemonic(12, "english")
     uuid = str(uuid4())
@@ -86,11 +110,13 @@ def launch_node(team_id: str) -> NodeInfo:
             break
         time.sleep(0.1)
 
-    node_info = NodeInfo(
-        port=port, mnemonic=mnemonic, proc=proc, uuid=uuid, team=team_id
-    )
-    instances_by_uuid[uuid] = node_info
-    instances_by_team[team_id] = node_info
+    node_info = {
+        "port": port,
+        "mnemonic": mnemonic,
+        "pid": proc.pid,
+        "uuid": uuid,
+        "team": team_id,
+    }
 
     reaper = Thread(target=kill_node, args=(node_info,))
     reaper.start()
@@ -121,7 +147,7 @@ def create():
 
     team_id = body["team_id"]
 
-    if team_id in instances_by_team:
+    if has_instance_by_team(team_id):
         print(f"refusing to run a new chain for team {team_id}")
         return {
             "ok": False,
@@ -129,6 +155,8 @@ def create():
             "message": "An instance is already running!",
         }
 
+    print(f"launching node for team {team_id}")
+    
     node_info = launch_node(team_id)
     if node_info is None:
         print(f"failed to launch node for team {team_id}")
@@ -137,11 +165,14 @@ def create():
             "error": "error_starting_chain",
             "message": "An error occurred while starting the chain",
         }
+    create_instance_info(node_info)
+
+    print(f"launched node for team {team_id} (uuid={node_info['uuid']}, pid={node_info['pid']})")
 
     return {
         "ok": True,
-        "uuid": node_info.uuid,
-        "mnemonic": node_info.mnemonic,
+        "uuid": node_info['uuid'],
+        "mnemonic": node_info['mnemonic'],
     }
 
 
@@ -158,7 +189,7 @@ def kill():
 
     team_id = body["team_id"]
 
-    if team_id not in instances_by_team:
+    if not has_instance_by_team(team_id):
         print(f"no instance to kill for team {team_id}")
         return {
             "ok": False,
@@ -166,7 +197,7 @@ def kill():
             "message": "No instance is running!",
         }
 
-    really_kill_node(instances_by_team[team_id])
+    really_kill_node(get_instance_by_team(team_id))
 
     return {
         "ok": True,
@@ -187,7 +218,7 @@ def proxy(uuid):
     if "id" not in body:
         return ""
 
-    if uuid not in instances_by_uuid:
+    if not has_instance_by_uuid(uuid):
         return {
             "jsonrpc": "2.0",
             "id": body["id"],
@@ -196,6 +227,8 @@ def proxy(uuid):
                 "message": "invalid uuid specified",
             },
         }
+
+    node_info = get_instance_by_uuid(uuid)
 
     if "method" not in body or not isinstance(body["method"], str):
         return {
@@ -221,8 +254,7 @@ def proxy(uuid):
             },
         }
 
-    instance = instances_by_uuid[uuid]
-    resp = requests.post(f"http://127.0.0.1:{instance.port}", json=body)
+    resp = requests.post(f"http://127.0.0.1:{node_info['port']}", json=body)
     response = Response(resp.content, resp.status_code, resp.raw.headers.items())
     return response
 
