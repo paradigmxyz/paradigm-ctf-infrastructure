@@ -76,7 +76,7 @@ def kill_node(node_info: Dict):
     really_kill_node(node_info)
 
 
-def launch_node(team_id: str) -> Dict:
+def launch_node(team_id: str, accounts: int) -> Dict:
     port = str(random.randrange(30000, 60000))
 
     seed = str(random.getrandbits(32))
@@ -88,7 +88,7 @@ def launch_node(team_id: str) -> Dict:
             "--port",
             port,
             "--accounts",
-            "2",  # first account is the deployer, second account is for the user
+            str(accounts),
             "--seed",
             seed,
         ],
@@ -153,7 +153,7 @@ def create():
 
     print(f"launching node for team {team_id}")
     
-    node_info = launch_node(team_id)
+    node_info = launch_node(team_id, body["accounts"])
     if node_info is None:
         print(f"failed to launch node for team {team_id}")
         return {

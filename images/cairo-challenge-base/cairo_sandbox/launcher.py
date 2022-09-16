@@ -54,7 +54,8 @@ class Action:
 
 
 def new_launch_instance_action(
-    do_deploy: Callable[[GatewayClient, int], str],
+    do_deploy: Callable[[[AccountClient], int], str],
+    accounts: int = 1
 ):
     async def action() -> int:
         ticket = check_ticket(input("ticket please: "))
@@ -75,6 +76,7 @@ def new_launch_instance_action(
             data=json.dumps(
                 {
                     "team_id": ticket.team_id,
+                    "accounts": accounts + 1,
                 }
             ),
         ).json()
@@ -86,12 +88,11 @@ def new_launch_instance_action(
         uuid = data["uuid"]
         seed = data["seed"]
 
+        client = GatewayClient(f"http://{uuid}@127.0.0.1:{HTTP_PORT}", TESTNET)
+
         # https://github.com/Shard-Labs/starknet-devnet/blob/660c0064b36a0eb4376ae7da38f2b8e8cb82f55e/starknet_devnet/accounts.py
         random_generator = random.Random()
         random_generator.seed(int(seed))
-
-        deployer_private_key = random_generator.getrandbits(128)
-        deployer_public_key = private_to_stark_key(deployer_private_key)
 
         player_private_key = random_generator.getrandbits(128)
         player_public_key = private_to_stark_key(player_private_key)
@@ -102,23 +103,30 @@ def new_launch_instance_action(
             deployer_address=0,
         )
 
-        client = GatewayClient(f"http://{uuid}@127.0.0.1:{HTTP_PORT}", TESTNET)
-        # https://github.com/Shard-Labs/starknet-devnet/blob/a5c53a52dcf453603814deedb5091ab8c231c3bd/starknet_devnet/account.py#L35
-        deployer_client = AccountClient(
-            client=client,
-            address=calculate_contract_address_from_hash(
+        account_clients = []
+        for i in range(accounts):
+            system_private_key = random_generator.getrandbits(128)
+            system_public_key = private_to_stark_key(system_private_key)
+            system_address = calculate_contract_address_from_hash(
                 salt=20,
                 class_hash=1803505466663265559571280894381905521939782500874858933595227108099796801620,
-                constructor_calldata=[deployer_public_key],
+                constructor_calldata=[system_public_key],
                 deployer_address=0,
-            ),
-            key_pair=KeyPair(
-                private_key=deployer_private_key, public_key=deployer_public_key
-            ),
-            chain=StarknetChainId.TESTNET,
-        )
+            )
 
-        contract_addr = hex(await do_deploy(deployer_client, player_address))
+            # https://github.com/Shard-Labs/starknet-devnet/blob/a5c53a52dcf453603814deedb5091ab8c231c3bd/starknet_devnet/account.py#L35
+            system_client = AccountClient(
+                client=client,
+                address=system_address,
+                key_pair=KeyPair(
+                    private_key=system_private_key, public_key=system_public_key
+                ),
+                chain=StarknetChainId.TESTNET,
+            )
+
+            account_clients.append(system_client)
+
+        contract_addr = hex(await do_deploy(account_clients, player_address))
 
         with open(f"/tmp/{ticket.team_id}", "w") as f:
             f.write(
@@ -175,7 +183,8 @@ def new_kill_instance_action():
 
 
 def new_get_flag_action(
-    checker: Callable[[GatewayClient, int], bool],
+    checker: Callable[[[AccountClient], int], bool],
+    accounts = 1,
 ):
     async def action() -> int:
         ticket = check_ticket(input("ticket please: "))
@@ -194,12 +203,12 @@ def new_get_flag_action(
             print("bad ticket")
             return 1
 
+
+        client = GatewayClient(f"http://{data['uuid']}@127.0.0.1:{HTTP_PORT}", TESTNET)
+
         # https://github.com/Shard-Labs/starknet-devnet/blob/660c0064b36a0eb4376ae7da38f2b8e8cb82f55e/starknet_devnet/accounts.py
         random_generator = random.Random()
         random_generator.seed(int(data["seed"]))
-
-        deployer_private_key = random_generator.getrandbits(128)
-        deployer_public_key = private_to_stark_key(deployer_private_key)
 
         player_private_key = random_generator.getrandbits(128)
         player_public_key = private_to_stark_key(player_private_key)
@@ -210,27 +219,34 @@ def new_get_flag_action(
             deployer_address=0,
         )
 
-        client = GatewayClient(f"http://{data['uuid']}@127.0.0.1:{HTTP_PORT}", TESTNET)
-        # https://github.com/Shard-Labs/starknet-devnet/blob/a5c53a52dcf453603814deedb5091ab8c231c3bd/starknet_devnet/account.py#L35
-        deployer_client = AccountClient(
-            client=client,
-            address=calculate_contract_address_from_hash(
+        account_clients = []
+        for i in range(accounts):
+            system_private_key = random_generator.getrandbits(128)
+            system_public_key = private_to_stark_key(system_private_key)
+            system_address = calculate_contract_address_from_hash(
                 salt=20,
                 class_hash=1803505466663265559571280894381905521939782500874858933595227108099796801620,
-                constructor_calldata=[deployer_public_key],
+                constructor_calldata=[system_public_key],
                 deployer_address=0,
-            ),
-            key_pair=KeyPair(
-                private_key=deployer_private_key, public_key=deployer_public_key
-            ),
-            chain=StarknetChainId.TESTNET,
-        )
+            )
+
+            # https://github.com/Shard-Labs/starknet-devnet/blob/a5c53a52dcf453603814deedb5091ab8c231c3bd/starknet_devnet/account.py#L35
+            system_client = AccountClient(
+                client=client,
+                address=system_address,
+                key_pair=KeyPair(
+                    private_key=system_private_key, public_key=system_public_key
+                ),
+                chain=StarknetChainId.TESTNET,
+            )
+
+            account_clients.append(system_client)
 
         contract = await Contract.from_address(
-            int(data["address"], 16), deployer_client
+            int(data["address"], 16), account_clients[0]
         )
 
-        if not await checker(deployer_client, contract, player_address):
+        if not await checker(account_clients, contract, player_address):
             print("are you sure you solved it?")
             return 1
 
