@@ -1,0 +1,19 @@
+apiVersion: kctf.dev/v1
+kind: Challenge
+metadata:
+  name: eth-pwn
+  annotations:
+    type: PWN
+    name: ETH Pwn
+    description: "This is an example description"
+    author: "Paradigm"
+    tags: "pwn"
+    flag: "PCTF{flagflagflag}"
+spec:
+  deployed: true
+  powDifficultySeconds: 0
+  network:
+    public: true
+  healthcheck:
+    # TIP: disable the healthcheck during development
+    enabled: false

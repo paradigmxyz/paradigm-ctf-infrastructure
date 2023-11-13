@@ -1,0 +1,19 @@
+apiVersion: kctf.dev/v1
+kind: Challenge
+metadata:
+  name: eth-koth
+  annotations:
+    type: KOTH
+    koth_score_order: DESC
+    name: ETH KOTH
+    description: "In this KOTH challenge, the highest score wins. That's why the sort order is DESC"
+    author: "Paradigm"
+    tags: "koth"
+spec:
+  deployed: true
+  powDifficultySeconds: 0
+  network:
+    public: true
+  healthcheck:
+    # TIP: disable the healthcheck during development
+    enabled: false

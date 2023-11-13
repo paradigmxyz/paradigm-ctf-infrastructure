@@ -1,0 +1,131 @@
+#!/bin/zsh
+
+deactivate 2>/dev/null || true
+source kctf/activate
+
+function bundle-challenge {
+    _kctf_set_active_challenge
+    
+    if [[ -z "$CHALLENGE_NAME" ]]; then
+        echo "bundle-challenge: no active challenge, cd to a challenge dir first" >&2
+        return 1
+    fi
+
+    CHAL_SPEC="$CHALLENGE_DIR/challenge.yaml"
+
+    mkdir "$KCTF_CTF_DIR/artifacts" 2>/dev/null || true
+
+    OUTPUT_FILE=$(realpath "$KCTF_CTF_DIR/artifacts/${CHALLENGE_NAME}.zip")
+
+    echo "[+] bundling $CHALLENGE_NAME into $OUTPUT_FILE" >&2
+
+    rm "$OUTPUT_FILE" 2>/dev/null || true
+
+    (cd "$CHALLENGE_DIR"; zip -qr "$OUTPUT_FILE" "challenge" -x"@.challengeignore")
+
+    echo "[+] done!" >&2
+}
+
+function start-challenge {
+    DEV_HOST="challenges-dev.paradigm.xyz"
+    PROD_HOST="challenges.paradigm.xyz"
+    SECRET="secret"
+
+    ENV="${ENV:-local}"
+
+    _kctf_set_active_challenge
+    
+    if [[ -z "$CHALLENGE_NAME" ]]; then
+        echo "bundle-challenge: no active challenge, cd to a challenge dir first" >&2
+        return 1
+    fi
+
+    FLAG="$($KCTF_BIN/yq eval '.metadata.annotations.flag' ${CHALLENGE_DIR}/challenge.yaml)"
+
+    function append_container_env() {
+        SPEC="$1"
+        KEY="$2"
+        VAL="$3"
+
+        echo "$SPEC" | jq --arg key "$KEY" --arg val "$VAL" '.env += [{"name": $key, "value": $val}]'
+    }
+
+    function append_network_port() {
+        SPEC="$1"
+        PROTOCOL="$2"
+        TARGET_PORT="$3"
+        DOMAIN="$4"
+
+        echo "$SPEC" | \
+            jq --arg protocol "$PROTOCOL" --arg targetPort "$TARGET_PORT" --arg domain "$DOMAIN" \
+            '.ports += [{"protocol": $protocol, "targetPort": $targetPort, "domains": [$domain]}]'
+    }
+
+    CONTAINER_SPEC=$(echo '{}' | jq '.name = "challenge" | .env = []')
+    CONTAINER_SPEC=$(append_container_env "$CONTAINER_SPEC" "PERSIST_ENV" "$ENV")
+    CONTAINER_SPEC=$(append_container_env "$CONTAINER_SPEC" "PERSIST_CHALLENGE_ID" "$CHALLENGE_NAME")
+    CONTAINER_SPEC=$(append_container_env "$CONTAINER_SPEC" "PERSIST_FLAG" "$FLAG")
+    CONTAINER_SPEC=$(append_container_env "$CONTAINER_SPEC" "PERSIST_ETH_RPC_URL" "https://mainnet.infura.io/v3/a5d448ae5f454f1488d667b98b9963ec")
+
+    if [ "$ENV" = "local" ]; then
+        NETWORK_SPEC=$(echo '{}' | jq '.public = false')
+    elif [ "$ENV" = "dev" ]; then
+        NETWORK_SPEC=$(echo '{}' | jq '.public = true')
+        NETWORK_SPEC=$(append_network_port "$NETWORK_SPEC" "TCP" "1337" "$DEV_HOST")
+        NETWORK_SPEC=$(append_network_port "$NETWORK_SPEC" "TCP" "8545" "$DEV_HOST")
+        
+        CONTAINER_SPEC=$(append_container_env "$CONTAINER_SPEC" "PERSIST_PUBLIC_HOST" "http://${CHALLENGE_NAME}.${DEV_HOST}:8545")
+    elif [ "$ENV" = "prod" ]; then
+        NETWORK_SPEC=$(echo '{}' | jq '.public = true')
+        NETWORK_SPEC=$(append_network_port "$NETWORK_SPEC" "TCP" "1337" "$PROD_HOST")
+        NETWORK_SPEC=$(append_network_port "$NETWORK_SPEC" "TCP" "8545" "$PROD_HOST")
+        CONTAINER_SPEC=$(append_container_env "$CONTAINER_SPEC" "PERSIST_PUBLIC_HOST" "http://${CHALLENGE_NAME}.${PROD_HOST}:8545")
+        CONTAINER_SPEC=$(append_container_env "$CONTAINER_SPEC" "PERSIST_SECRET" "$SECRET")
+        CONTAINER_SPEC="$(echo "$CONTAINER_SPEC" | jq -c ".resources.limits.memory = \"8G\"")"
+        CONTAINER_SPEC="$(echo "$CONTAINER_SPEC" | jq -c ".resources.limits.cpu = \"2\"")"
+    fi
+
+    ${KCTF_BIN}/yq eval ".spec.podTemplate.template.spec.serviceAccountName=\"default\"" --inplace "${CHALLENGE_DIR}/challenge.yaml"
+    ${KCTF_BIN}/yq eval ".spec.podTemplate.template.spec.automountServiceAccountToken=true" --inplace "${CHALLENGE_DIR}/challenge.yaml"
+    ${KCTF_BIN}/yq eval ".spec.podTemplate.template.spec.containers[0]=$CONTAINER_SPEC" --inplace "${CHALLENGE_DIR}/challenge.yaml"
+    ${KCTF_BIN}/yq eval ".spec.network=$NETWORK_SPEC" --inplace "${CHALLENGE_DIR}/challenge.yaml"
+
+    kctf chal start
+}
+
+function port-forward-challenge {
+    _kctf_set_active_challenge
+    
+    if [[ -z "$CHALLENGE_NAME" ]]; then
+        echo "port-forward-challenge: no active challenge, cd to a challenge dir first" >&2
+        return 1
+    fi
+
+    if [[ $# -eq 0 ]]; then
+        echo "port-forward-challenge: no ports specified" >&2
+        return 1
+    fi
+
+    LATEST_REVISION=$(kubectl get deployment \
+        "$CHALLENGE_NAME" --output jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}' \
+    )
+
+    AVAILABLE_REPLICAS=$(kubectl get replicaset \
+        --selector app="$CHALLENGE_NAME" \
+        --no-headers \
+        --output 'custom-columns=hash:metadata.labels.pod-template-hash,version:metadata.annotations.deployment\.kubernetes\.io/revision' \
+    )
+
+    DESIRE_POD_REPLICA_HASH=$(echo "$AVAILABLE_REPLICAS" | grep -E "\s+$LATEST_REVISION$" | cut -d' ' -f1)
+
+    kubectl wait \
+        --for=condition=ready pod \
+        --selector app=$CHALLENGE_NAME --selector pod-template-hash=$DESIRE_POD_REPLICA_HASH >/dev/null
+    
+    pkill kubectl
+    while [[ $# -gt 0 ]]; do
+        echo "[+] forwarding port $1" >&2
+        kctf chal debug port-forward --port "$1" --local-port "$1" >/dev/null 2>&1
+        shift
+    done
+}
