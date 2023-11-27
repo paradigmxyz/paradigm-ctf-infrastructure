@@ -39,7 +39,7 @@ def deploy(
             deploy_script,
         ],
         env={
-            "PATH": "/opt/huff/bin:/opt/foundry/bin:/usr/bin:" + os.getenv("PATH"),
+            "PATH": "/opt/huff/bin:/opt/foundry/bin:/usr/bin:" + os.getenv("PATH", "/fake"),
             "MNEMONIC": mnemonic,
             "OUTPUT_FILE": f"/proc/self/fd/{wfd}",
         }

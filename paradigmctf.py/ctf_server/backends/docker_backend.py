@@ -9,6 +9,7 @@ from ctf_server.databases.database import Database
 from ctf_server.types import (
     DEFAULT_IMAGE,
     CreateInstanceRequest,
+    InstanceInfo,
     UserData,
     format_anvil_args,
 )
@@ -40,15 +41,17 @@ class DockerBackend(Backend):
                 image=anvil_args.get("image", DEFAULT_IMAGE),
                 network="paradigmctf",
                 entrypoint=["sh", "-c"],
-                command=["while true; do anvil " + " ".join(
-                    [
-                        shlex.quote(str(v))
-                        for v in format_anvil_args(anvil_args, anvil_id)
-                    ]
-                ) + "; sleep 1; done;"],
-                restart_policy={
-                    'Name': 'always'
-                },
+                command=[
+                    "while true; do anvil "
+                    + " ".join(
+                        [
+                            shlex.quote(str(v))
+                            for v in format_anvil_args(anvil_args, anvil_id)
+                        ]
+                    )
+                    + "; sleep 1; done;"
+                ],
+                restart_policy={"Name": "always"},
                 detach=True,
                 mounts=[
                     Mount(target="/data", source=volume.id),
@@ -61,31 +64,24 @@ class DockerBackend(Backend):
                 name=f"{instance_id}-{daemon_id}",
                 image=daemon_args["image"],
                 network="paradigmctf",
-                restart_policy={
-                    'Name': 'always'
-                },
+                restart_policy={"Name": "always"},
                 detach=True,
                 environment={
                     "INSTANCE_ID": instance_id,
                 },
             )
 
-        anvil_instances = {}
+        anvil_instances: Dict[str, InstanceInfo] = {}
         for anvil_id, anvil_container in anvil_containers.items():
             container: Container = self.__client.containers.get(anvil_container.id)
 
-            anvil_instances[anvil_id] = self._anvil_metadata_to_instance_info(
-                anvil_id,
-                request["timeout"],
-                request["anvil_instances"][anvil_id],
-                {
-                    "backend_id": anvil_id,
-                    "ip": container.attrs["NetworkSettings"]["Networks"]["paradigmctf"][
-                        "IPAddress"
-                    ],
-                    "port": 8545,
-                },
-            )
+            anvil_instances[anvil_id] = {
+                "id": anvil_id,
+                "ip": container.attrs["NetworkSettings"]["Networks"]["paradigmctf"][
+                    "IPAddress"
+                ],
+                "port": 8545,
+            }
 
             self._prepare_node(
                 request["anvil_instances"][anvil_id],
@@ -99,7 +95,7 @@ class DockerBackend(Backend):
         daemon_instances = {}
         for daemon_id, daemon_container in daemon_containers.items():
             daemon_instances[daemon_id] = {
-                "backend_id": daemon_id,
+                "id": daemon_id,
             }
 
         now = time.time()
@@ -122,7 +118,7 @@ class DockerBackend(Backend):
             args.get("daemon_instances", {}).keys(),
         )
 
-    def kill_instance(self, instance_id: str):
+    def kill_instance(self, instance_id: str) -> UserData:
         instance = self._database.unregister_instance(instance_id)
         if instance is None:
             return None

@@ -7,8 +7,39 @@ This repository contains all the files used to host [Paradigm CTF](https://ctf.p
 To run the CTF infrastructure locally, simply run the following commands:
 
 ```bash
-cd paradigmctf.xyz
+cd paradigmctf.py
 docker compose up
+```
+
+To run the CTF infrastructure in kCTF, you'll need to do the following:
+
+```bash
+# create the cluster if it doesn't exist
+kctf cluster create --type kind local-cluster
+
+# build the image
+(cd paradigmctf.py; docker build gcr.io/paradigmxyz/infra/paradigmctf.py:latest)
+
+# push the image to kind
+kind load docker-image --name "${CLUSTER_NAME}" "gcr.io/paradigmxyz/infra/paradigmctf.py:latest"
+
+# create all the resources
+kubectl apply kubernetes/ctf-server.yaml
+
+# port forward the anvil proxy for local access
+kubectl port-forward service/anvil-proxy 8545:8545 &
+```
+
+Now you'll be able to build and test challenges in kCTF:
+```bash
+# start the challenge
+kctf chal start
+
+# port forward the challenge
+kctf chal debug port-forward --port 1337 --local-port 1337 &
+
+# connect to the challenge
+nc 127.0.0.1 1337
 ```
 
 ## Images

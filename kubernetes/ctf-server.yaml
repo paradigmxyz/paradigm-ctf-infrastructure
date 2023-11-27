@@ -1,0 +1,152 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ctf-server
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: default
+  name: ctf-server
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "watch", "list", "create", "delete", "deletecollection", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ctf-server
+  namespace: default
+subjects:
+- kind: ServiceAccount
+  name: ctf-server
+  namespace: default
+roleRef:
+  kind: Role
+  name: ctf-server
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis/redis-stack:latest
+          env:
+            - name: REDIS_ARGS
+              value: --save 60 1
+          volumeMounts:
+            - name: database
+              mountPath: /data
+          ports:
+            - containerPort: 6379
+          resources:
+            limits:
+              cpu: 1.0
+              memory: 1G
+      volumes:
+        - name: database
+          emptyDir: {} 
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+spec:
+  selector:
+    app: redis
+  ports:
+    - protocol: TCP
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ctf-server
+spec:
+  selector:
+    matchLabels:
+      app: ctf-server
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ctf-server
+    spec:
+      serviceAccountName: ctf-server
+      securityContext:
+        runAsNonRoot: true
+      containers:
+      - name: orchestrator
+        image: gcr.io/paradigmxyz/infra/paradigmctf.py:latest
+        command: ["uvicorn", "--host", "0.0.0.0", "--port", "7283", "ctf_server:orchestrator"]
+        env:
+        - name: BACKEND
+          value: kubernetes
+        - name: DATABASE
+          value: redis
+        - name: REDIS_URL
+          value: redis://redis:6379/0
+        ports:
+        - containerPort: 7283
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+        resources:
+          limits:
+            cpu: 1.0
+            memory: 1G
+      - name: anvil-proxy
+        image: gcr.io/paradigmxyz/infra/paradigmctf.py:latest
+        command: ["uvicorn", "--host", "0.0.0.0", "--port", "8545", "--workers", "16", "ctf_server:anvil_proxy"]
+        env:
+        - name: DATABASE
+          value: redis
+        - name: REDIS_URL
+          value: redis://redis:6379/0
+        ports:
+        - containerPort: 8545
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+        resources:
+          limits:
+            cpu: 2.0
+            memory: 2G
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator
+spec:
+  selector:
+    app: ctf-server
+  ports:
+    - protocol: TCP
+      port: 7283
+      targetPort: 7283
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: anvil-proxy
+spec:
+  selector:
+    app: ctf-server
+  ports:
+    - protocol: TCP
+      port: 8545
+      targetPort: 8545

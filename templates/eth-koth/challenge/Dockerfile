@@ -1,10 +1,20 @@
-FROM gcr.io/paradigmxyz/ctf/eth-challenge:latest as chroot
+FROM ghcr.io/foundry-rs/foundry:latest AS foundry
 
-COPY --chown=user:user project/ /home/user/project/
+COPY project /project
 
-RUN cd /home/user/project && forge build
+# artifacts must be the same path
+RUN true && \
+    cd /project && \
+    forge build --out /artifacts/out --cache-path /artifacts/cache && \
+    true
 
-COPY --chown=user:user *.py /home/user/
+FROM gcr.io/paradigmxyz/infra/paradigmctf.py:latest as chroot
+
+# ideally in the future, we can skip the chowns, but for now Forge wants to write the cache and broadcast artifacts
+
+COPY --chown=user:user . /home/user/challenge/
+
+COPY --from=foundry --chown=user:user /artifacts /artifacts
 
 FROM gcr.io/paradigmxyz/ctf/kctf-challenge:latest
 
@@ -17,5 +27,4 @@ RUN touch /chroot/bin/kctf_restore_env && touch /chroot/environ
 
 CMD kctf_setup && \
     kctf_persist_env && \
-    kctf_drop_privs nsjail --config /nsjail.cfg -- /bin/kctf_restore_env /usr/local/bin/python3 -u -m anvil_server & \
-    kctf_drop_privs socat TCP-LISTEN:1337,reuseaddr,fork EXEC:"nsjail --config /nsjail.cfg -- /bin/kctf_restore_env /usr/local/bin/python3 -u challenge.py"
+    kctf_drop_privs socat TCP-LISTEN:1337,reuseaddr,fork EXEC:"nsjail --config /nsjail.cfg -- /bin/kctf_restore_env /usr/local/bin/python3 -u challenge/challenge.py"

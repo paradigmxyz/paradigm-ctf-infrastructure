@@ -27,4 +27,4 @@ RUN touch /chroot/bin/kctf_restore_env && touch /chroot/environ
 
 CMD kctf_setup && \
     kctf_persist_env && \
-    kctf_drop_privs socat TCP-LISTEN:1337,reuseaddr,fork EXEC:"nsjail --config /nsjail.cfg -- /bin/kctf_restore_env /usr/local/bin/python3 -u challenge.py"
+    kctf_drop_privs socat TCP-LISTEN:1337,reuseaddr,fork EXEC:"nsjail --config /nsjail.cfg -- /bin/kctf_restore_env /usr/local/bin/python3 -u challenge/challenge.py"

@@ -32,10 +32,10 @@ class LaunchAnvilInstanceArgs(TypedDict):
     code_size_limit: NotRequired[Optional[int]]
 
 
-def format_anvil_args(args: LaunchAnvilInstanceArgs, anvil_id: str) -> List[str]:
+def format_anvil_args(args: LaunchAnvilInstanceArgs, anvil_id: str, port: int = 8545) -> List[str]:
     cmd_args = []
     cmd_args += ["--host", "0.0.0.0"]
-    cmd_args += ["--port", "8545"]
+    cmd_args += ["--port", str(port)]
     cmd_args += ["--accounts", "0"]
     cmd_args += ["--state", f"/data/{anvil_id}-state.json"]
     cmd_args += ["--state-interval", "5"]
@@ -74,21 +74,6 @@ class CreateInstanceRequest(TypedDict):
 
 class InstanceInfo(TypedDict):
     id: str
-    timeout: int
-    backend_id: str
-    rpc_id: str
-    created_at: float
-    ip: str
-    port: int
-    args: LaunchAnvilInstanceArgs
-
-
-class AnvilInstanceMetadata(TypedDict):
-    """
-    Returned by implementations
-    """
-
-    backend_id: str
     ip: str
     port: int
 

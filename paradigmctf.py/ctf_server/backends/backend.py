@@ -1,11 +1,8 @@
 import abc
-import base64
 import logging
-import pickle
 import random
 import string
 import time
-import traceback
 from threading import Thread
 
 from ctf_server.databases.database import Database
@@ -14,9 +11,7 @@ from ctf_server.types import (
     DEFAULT_BALANCE,
     DEFAULT_DERIVATION_PATH,
     DEFAULT_MNEMONIC,
-    AnvilInstanceMetadata,
     CreateInstanceRequest,
-    InstanceInfo,
     LaunchAnvilInstanceArgs,
     UserData,
 )
@@ -72,42 +67,8 @@ class Backend(abc.ABC):
     def _cleanup_instance(self, args: CreateInstanceRequest):
         pass
 
-    def launch_anvil_instance(
-        self, instance_id: str, args: LaunchAnvilInstanceArgs
-    ) -> InstanceInfo:
-        anvil_metadata = self.launch_anvil_instance_impl(instance_id, args)
-
-        return {
-            "id": instance_id,
-            "backend_id": anvil_metadata["backend_id"],
-            "rpc_id": self._generate_rpc_id(),
-            "args": base64.b64encode(pickle.dumps(args)).decode("utf-8"),
-            "created_at": time.time(),
-            "timeout": args.timeout,
-            "ip": anvil_metadata["ip"],
-            "port": anvil_metadata["port"],
-        }
-
-    def _anvil_metadata_to_instance_info(
-        self,
-        anvil_id: str,
-        timeout: int,
-        args: LaunchAnvilInstanceArgs,
-        metadata: AnvilInstanceMetadata,
-    ) -> InstanceInfo:
-        return {
-            "id": anvil_id,
-            "backend_id": metadata["backend_id"],
-            "rpc_id": self._generate_rpc_id(),
-            "args": base64.b64encode(pickle.dumps(args)).decode("utf-8"),
-            "created_at": time.time(),
-            "timeout": timeout,
-            "ip": metadata["ip"],
-            "port": metadata["port"],
-        }
-
     @abc.abstractmethod
-    def kill_instance(self, id: str) -> InstanceInfo:
+    def kill_instance(self, id: str) -> UserData:
         pass
 
     def _generate_rpc_id(self, N: int = 24) -> str:
