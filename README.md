@@ -24,7 +24,7 @@ kctf cluster create --type kind local-cluster
 kind load docker-image --name "${CLUSTER_NAME}" "gcr.io/paradigmxyz/infra/paradigmctf.py:latest"
 
 # create all the resources
-kubectl apply kubernetes/ctf-server.yaml
+kubectl apply -f kubernetes/ctf-server.yaml
 
 # port forward the anvil proxy for local access
 kubectl port-forward service/anvil-proxy 8545:8545 &
