@@ -88,7 +88,7 @@ class Launcher(abc.ABC):
         )
 
     def get_instance_id(self) -> str:
-        return f"{CHALLENGE}-{self.team}"
+        return f"chal-{CHALLENGE}-{self.team}".lower()
 
     def update_metadata(self, new_metadata: Dict[str, str]):
         resp = requests.post(
@@ -135,7 +135,7 @@ class Launcher(abc.ABC):
         return 0
 
     def kill_instance(self) -> int:
-        resp = requests.delete(f"{ORCHESTRATOR_HOST}/instances/{CHALLENGE}-{self.team}")
+        resp = requests.delete(f"{ORCHESTRATOR_HOST}/instances/${self.get_instance_id()}")
         body = resp.json()
 
         print(body["message"])

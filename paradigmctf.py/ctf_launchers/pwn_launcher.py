@@ -25,7 +25,7 @@ class PwnChallengeLauncher(Launcher):
         )
 
     def get_flag(self) -> int:
-        instance_body = requests.get(f"{ORCHESTRATOR_HOST}/instances/{CHALLENGE}-{self.team}").json()
+        instance_body = requests.get(f"{ORCHESTRATOR_HOST}/instances/{self.get_instance_id()}").json()
         if not instance_body['ok']:
             print(instance_body['message'])
             return 1
