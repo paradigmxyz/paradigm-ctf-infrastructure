@@ -6,7 +6,7 @@ from typing import Callable, Dict, List
 
 import requests
 from ctf_launchers.team_provider import TeamProvider
-from ctf_launchers.utils import deploy
+from ctf_launchers.utils import deploy, http_url_to_ws
 from ctf_server.types import (
     CreateInstanceRequest,
     DaemonInstanceArgs,
@@ -123,6 +123,8 @@ class Launcher(abc.ABC):
             {"mnemonic": self.mnemonic, "challenge_address": challenge_addr}
         )
 
+        PUBLIC_WEBSOCKET_HOST = http_url_to_ws(PUBLIC_HOST)
+
         print()
         print(f"your private blockchain has been set up")
         print(f"it will automatically terminate in {TIMEOUT} minutes")
@@ -130,6 +132,8 @@ class Launcher(abc.ABC):
         print(f"rpc endpoints:")
         for id in user_data["anvil_instances"]:
             print(f"    - {PUBLIC_HOST}/{user_data['external_id']}/{id}")
+            print(f"    - {PUBLIC_WEBSOCKET_HOST}/{user_data['external_id']}/{id}/ws")
+
         print(f"private key:        {get_player_account(self.mnemonic).key.hex()}")
         print(f"challenge contract: {challenge_addr}")
         return 0

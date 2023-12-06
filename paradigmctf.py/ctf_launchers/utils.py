@@ -82,3 +82,11 @@ def anvil_setCodeFromFile(
         bytecode = cache["deployedBytecode"]["object"]
 
     anvil_setCode(web3, addr, bytecode)
+
+def http_url_to_ws(url: str) -> str:
+    if url.startswith("http://"):
+        return "ws://" + url[len("http://") :]
+    elif url.startswith("https://"):
+        return "wss://" + url[len("https://") :]
+
+    return url
