@@ -58,7 +58,7 @@ spec:
               memory: 1G
       volumes:
         - name: database
-          emptyDir: {} 
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -109,6 +109,38 @@ spec:
           limits:
             cpu: 1.0
             memory: 1G
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator
+spec:
+  selector:
+    app: ctf-server
+  ports:
+    - protocol: TCP
+      port: 7283
+      targetPort: 7283
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anvil-proxy
+spec:
+  selector:
+    matchLabels:
+      app: anvil-proxy
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: anvil-proxy
+    spec:
+      serviceAccountName: ctf-server
+      securityContext:
+        runAsNonRoot: true
+      containers:
       - name: anvil-proxy
         image: gcr.io/paradigmxyz/infra/paradigmctf.py:latest
         command: ["uvicorn", "--host", "0.0.0.0", "--port", "8545", "--workers", "16", "ctf_server:anvil_proxy"]
@@ -125,19 +157,7 @@ spec:
         resources:
           limits:
             cpu: 2.0
-            memory: 2G
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: orchestrator
-spec:
-  selector:
-    app: ctf-server
-  ports:
-    - protocol: TCP
-      port: 7283
-      targetPort: 7283
+            memory: 4G
 ---
 apiVersion: v1
 kind: Service
@@ -145,7 +165,7 @@ metadata:
   name: anvil-proxy
 spec:
   selector:
-    app: ctf-server
+    app: anvil-proxy
   ports:
     - protocol: TCP
       port: 8545
