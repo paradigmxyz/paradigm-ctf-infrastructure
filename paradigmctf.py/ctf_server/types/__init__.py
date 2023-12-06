@@ -30,6 +30,7 @@ class LaunchAnvilInstanceArgs(TypedDict):
     no_rate_limit: NotRequired[Optional[bool]]
     chain_id: NotRequired[Optional[int]]
     code_size_limit: NotRequired[Optional[int]]
+    block_time: NotRequired[Optional[int]]
 
 
 def format_anvil_args(args: LaunchAnvilInstanceArgs, anvil_id: str, port: int = 8545) -> List[str]:
@@ -57,6 +58,9 @@ def format_anvil_args(args: LaunchAnvilInstanceArgs, anvil_id: str, port: int = 
 
     if args.get("code_size_limit") is not None:
         cmd_args += ["--code-size-limit", str(args["code_size_limit"])]
+
+    if args.get("block_time") is not None:
+        cmd_args += ["--block-time", str(args["block_time"])]
 
     return cmd_args
 

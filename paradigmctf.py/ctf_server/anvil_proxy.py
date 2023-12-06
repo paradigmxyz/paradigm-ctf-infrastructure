@@ -5,7 +5,9 @@ from contextlib import asynccontextmanager
 from typing import Any, Optional
 
 import aiohttp
-from fastapi import FastAPI, Request
+import asyncio
+from fastapi import FastAPI, Request, WebSocket
+import websockets
 
 from .utils import load_database
 
@@ -135,3 +137,46 @@ async def rpc(external_id: str, anvil_id: str, request: Request):
         return validation_resp
 
     return await proxy_request(external_id, anvil_id, body["id"], body)
+
+async def forward_message(client_to_remote: bool, client_ws: WebSocket, remote_ws: websockets):
+    if client_to_remote:
+        async for message in client_ws.iter_text():
+            try:
+                json_msg = json.loads(message)
+            except json.JSONDecodeError:
+                await client_ws.send_json(jsonrpc_fail(None, -32600, "expected json body"))
+
+            validation = validate_request(json_msg)
+            if validation is not None:
+                await client_ws.send_json(validation)
+            else:
+                await remote_ws.send(message)
+    else:
+        async for message in remote_ws:
+            await client_ws.send_text(message)
+
+@app.websocket("/{external_id}/{anvil_id}/ws")
+async def ws_rpc(external_id: str, anvil_id: str, client_ws: WebSocket):
+    user_data = database.get_instance_by_external_id(external_id)
+    if user_data is None:
+        client_ws.send_json(jsonrpc_fail(None, -32602, "invalid rpc url, instance not found"))
+        return
+
+    anvil_instance = user_data.get("anvil_instances", {}).get(anvil_id, None)
+    if anvil_instance is None:
+        client_ws.send_json(jsonrpc_fail(None, -32602, "invalid rpc url, chain not found"))
+        return
+
+    instance_host = f"ws://{anvil_instance['ip']}:{anvil_instance['port']}"
+
+    async with websockets.connect(instance_host) as remote_ws:
+        await client_ws.accept()
+        task_a = asyncio.create_task(forward_message(True, client_ws, remote_ws))
+        task_b = asyncio.create_task(forward_message(False, client_ws, remote_ws))
+
+        try:
+            await asyncio.wait([task_a, task_b], return_when=asyncio.FIRST_COMPLETED)
+            task_a.cancel()
+            task_b.cancel()
+        except:
+            pass
