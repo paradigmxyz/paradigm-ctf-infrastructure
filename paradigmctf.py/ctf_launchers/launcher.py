@@ -139,7 +139,7 @@ class Launcher(abc.ABC):
         return 0
 
     def kill_instance(self) -> int:
-        resp = requests.delete(f"{ORCHESTRATOR_HOST}/instances/${self.get_instance_id()}")
+        resp = requests.delete(f"{ORCHESTRATOR_HOST}/instances/{self.get_instance_id()}")
         body = resp.json()
 
         print(body["message"])
