@@ -145,12 +145,13 @@ async def forward_message(client_to_remote: bool, client_ws: WebSocket, remote_w
                 json_msg = json.loads(message)
             except json.JSONDecodeError:
                 await client_ws.send_json(jsonrpc_fail(None, -32600, "expected json body"))
+                continue
 
             validation = validate_request(json_msg)
             if validation is not None:
                 await client_ws.send_json(validation)
             else:
-                await remote_ws.send(message)
+                await remote_ws.send(json.dumps(json_msg))
     else:
         async for message in remote_ws:
             await client_ws.send_text(message)
