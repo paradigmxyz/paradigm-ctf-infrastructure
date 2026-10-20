@@ -33,7 +33,8 @@ RUN true && \
 # (Optimization) Install requirements
 COPY requirements.txt /tmp/requirements.txt
 
-RUN pip install -r /tmp/requirements.txt
+RUN python -m pip install --upgrade pip==26.2.2 && \
+    python -m pip install -r /tmp/requirements.txt
 
 # Install the library
 COPY . /tmp/paradigmctf.py
